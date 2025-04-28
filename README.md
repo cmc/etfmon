@@ -104,7 +104,7 @@ email_settings:
 ```
 
 ## Console Logs
-
+```
 📈 Checking MRNY...
 🔵 Polygon Aggregates Response (MRNY): 200 {'results': [...]}
 💲 Final Price: 2.52, 🔄 Volume: 1,650,400, 🧮 NAV: 2.55, 📡 Data Source: Polygon (Delayed Aggregate)
@@ -116,10 +116,10 @@ email_settings:
 📊 FIAT AUM: 48,900,000
 🚨 FIAT: AUM below $50M!
 ✅ Alert email sent: ⚠️ ETF AUM Risk Alert
-
+```
 
 ## Example email
-
+```
 ⚠️ ETF Risk Alert for FIAT
 
 FIAT: NAV has dropped 12.31% over 30 days.
@@ -128,3 +128,4 @@ FIAT: NAV has dropped 12.31% over 30 days.
 Review fund health. Significant NAV decline could signal asset weakness.
 Consider reducing exposure if trend persists.
 
+```

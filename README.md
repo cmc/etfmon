@@ -101,7 +101,7 @@ email_settings:
     - "youremail@example.com"
     - "yournumber@txt.att.net"  # SMS Gateway email address
 
-
+```
 
 ## Console Logs
 

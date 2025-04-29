@@ -6,8 +6,13 @@ import yaml
 import hashlib
 import json
 import os
+import sys
 import datetime
 from alert_emailer import send_email_alert
+
+# --- CONFIGURATIONS ---
+
+FAST_DEBUG = True  # <<<< Set this False for production (hourly scans)
 
 # Load configuration
 with open('config.yaml', 'r') as file:
@@ -31,6 +36,19 @@ MARKET_TRACKER_FILE = 'market_price_tracker.json'
 
 # Constants
 TIMEOUT = 5
+LOG_FILE = "output.log"
+
+# --- Logging Utility ---
+
+def log(msg):
+    timestamp = datetime.datetime.utcnow().strftime("[%Y-%m-%d %H:%M:%S]")
+    full_msg = f"{timestamp} {msg}"
+    print(full_msg)
+    try:
+        with open(LOG_FILE, "a") as f:
+            f.write(full_msg + "\n")
+    except Exception as e:
+        print(f"[ERROR] Failed to write to log file: {e}", file=sys.stderr)
 
 # --- Utility Functions ---
 
@@ -55,7 +73,7 @@ def should_send_alert(alert_hash):
         save_json(ALERT_HISTORY_FILE, history)
         return True
     last_sent = datetime.datetime.fromisoformat(history[alert_hash])
-    if (now - last_sent).total_seconds() > 86400:  # 24 hours
+    if (now - last_sent).total_seconds() > 86400:
         history[alert_hash] = now.isoformat()
         save_json(ALERT_HISTORY_FILE, history)
         return True
@@ -65,9 +83,9 @@ def send_heartbeat():
     if HEARTBEAT_URL:
         try:
             requests.get(HEARTBEAT_URL, timeout=5)
-            print(f"💓 Heartbeat sent successfully")
+            log("💓 Heartbeat sent successfully")
         except Exception as e:
-            print(f"❌ Heartbeat send failed: {e}")
+            log(f"❌ Heartbeat send failed: {e}")
 
 # --- Monitoring Functions ---
 
@@ -83,7 +101,7 @@ def fetch_polygon_price_volume(ticker):
         else:
             return None, None
     except Exception as e:
-        print(f"❌ Error fetching Polygon for {ticker}: {e}")
+        log(f"❌ Error fetching Polygon for {ticker}: {e}")
         return None, None
 
 def fetch_yahoo_nav(ticker):
@@ -95,7 +113,7 @@ def fetch_yahoo_nav(ticker):
         return None
 
 def monitor_etfs():
-    print(f"\n🛰️ Starting monitoring cycle at {datetime.datetime.utcnow()}")
+    log(f"🛰️ Starting monitoring cycle at {datetime.datetime.utcnow()}")
 
     nav_tracker = load_json(NAV_TRACKER_FILE)
     portfolio = load_json(PORTFOLIO_FILE)
@@ -104,51 +122,54 @@ def monitor_etfs():
     alerts_triggered = []
 
     for ticker in TICKERS:
-        print(f"\n📈 Checking {ticker}...")
+        log(f"📈 Checking {ticker}...")
         price, volume = fetch_polygon_price_volume(ticker)
         if not price or not volume:
-            print(f"⚠️ Skipping {ticker} due to fetch error.")
+            log(f"⚠️ Skipping {ticker} due to fetch error.")
             continue
 
         nav = fetch_yahoo_nav(ticker)
         if not nav:
-            print(f"⚠️ No NAV available for {ticker}, skipping NAV-based checks.")
+            log(f"⚠️ No NAV available for {ticker}, skipping NAV-based checks.")
             continue
 
-        # Save NAV and Market for trends
         nav_tracker.setdefault(ticker, []).append({"date": datetime.datetime.utcnow().isoformat(), "nav": nav})
         market_tracker.setdefault(ticker, []).append({"date": datetime.datetime.utcnow().isoformat(), "price": price})
 
         save_json(NAV_TRACKER_FILE, nav_tracker)
         save_json(MARKET_TRACKER_FILE, market_tracker)
 
-        # --- NAV Premium/Discount ---
-        premium_discount = (price - nav) / nav
-        premium_discount_pct = premium_discount * 100
-        if abs(premium_discount) >= RISK_THRESHOLDS['premium_discount_pct']:
-            if premium_discount > 0:
-                msg = f"⚡ PREMIUM detected: {ticker} trading {premium_discount_pct:.2f}% above NAV.\n"
-                msg += "🛑 Recommendation: Investigate premium sustainability. Consider trimming exposure."
-            else:
-                msg = f"⚡ DISCOUNT detected: {ticker} trading {abs(premium_discount_pct):.2f}% below NAV.\n"
-                msg += "🛑 Recommendation: Discount could signal distress. Confirm fundamentals before buying."
-            alerts_triggered.append(msg)
+        # --- Log Market, NAV, Premium/Discount Info ---
+        diff_pct = (price - nav) / nav * 100
+        premium_discount_label = "Premium" if diff_pct > 0 else "Discount"
+        log(f"🔎 {ticker}: Market=${price:.2f}, NAV=${nav:.2f}, {premium_discount_label}={abs(diff_pct):.2f}%")
 
-        # --- Volume Collapse ---
+        # --- Log Volume Info ---
         hist = yf.Ticker(ticker).history(period="30d")
         avg_vol = hist['Volume'].mean()
+        log(f"📊 {ticker}: Today Volume={volume:,}, 30d Avg Volume={avg_vol:,.0f}")
+
+        # --- Premium/Discount threshold alert ---
+        if abs(diff_pct/100) >= RISK_THRESHOLDS['premium_discount_pct']:
+            if diff_pct > 0:
+                msg = f"⚡ PREMIUM detected: {ticker} trading {diff_pct:.2f}% above NAV.\n🛑 Risk: Overheating or bubble behavior possible. Review for sell opportunity."
+            else:
+                msg = f"⚡ DISCOUNT detected: {ticker} trading {abs(diff_pct):.2f}% below NAV.\n🛑 Risk: Potential distress or undervaluation. Review fundamentals carefully."
+            alerts_triggered.append(msg)
+
+        # --- Volume Drop Alert ---
         vol_drop = (avg_vol - volume) / avg_vol
         if vol_drop > RISK_THRESHOLDS['volume_drop_pct']:
-            alerts_triggered.append(f"⚡ {ticker}: Volume dropped {vol_drop*100:.2f}% below 30d average. Watch liquidity.")
+            alerts_triggered.append(f"⚡ {ticker}: Volume dropped {vol_drop*100:.2f}% below 30d avg. Liquidity risk increasing.")
 
-        # --- 5-day NAV Erosion ---
+        # --- 5-Day NAV Erosion Alert ---
         recent_navs = [entry['nav'] for entry in nav_tracker[ticker][-5:]]
         if len(recent_navs) == 5 and all(recent_navs[i] > recent_navs[i+1] for i in range(4)):
-            alerts_triggered.append(f"⚡ {ticker}: 5-Day NAV erosion detected. Fund losing underlying value.")
+            alerts_triggered.append(f"⚡ {ticker}: 5-Day consecutive NAV erosion detected. Review fund stability.")
 
-        # --- NAV vs Market Inversion ---
+        # --- NAV vs Market Inversion Alert ---
         if nav > price:
-            alerts_triggered.append(f"⚡ {ticker}: Market price ${price:.2f} is below NAV ${nav:.2f}. Potential fund weakness.")
+            alerts_triggered.append(f"⚡ {ticker}: Market price ${price:.2f} is below NAV ${nav:.2f}. Investigate for possible fund distress.")
 
         # --- Principal Loss Monitoring ---
         if ticker in portfolio:
@@ -159,13 +180,12 @@ def monitor_etfs():
             loss_pct = (original_value - current_value) / original_value
 
             if loss_pct > PRINCIPAL_THRESHOLDS['critical']:
-                alerts_triggered.append(f"🛑 CRITICAL Principal Loss: {ticker} down {loss_pct*100:.2f}% from original investment.")
+                alerts_triggered.append(f"🛑 CRITICAL Principal Loss: {ticker} down {loss_pct*100:.2f}% from buy NAV.")
             elif loss_pct > PRINCIPAL_THRESHOLDS['danger']:
-                alerts_triggered.append(f"⚠️ Danger Principal Loss: {ticker} down {loss_pct*100:.2f}% from original investment.")
+                alerts_triggered.append(f"⚠️ Danger Principal Loss: {ticker} down {loss_pct*100:.2f}% from buy NAV.")
             elif loss_pct > PRINCIPAL_THRESHOLDS['warning']:
-                alerts_triggered.append(f"⚠️ Warning Principal Loss: {ticker} down {loss_pct*100:.2f}% from original investment.")
+                alerts_triggered.append(f"⚠️ Warning Principal Loss: {ticker} down {loss_pct*100:.2f}% from buy NAV.")
 
-    # --- AUM Monitoring ---
     monitor_aum()
 
     # --- Send Alerts ---
@@ -175,14 +195,14 @@ def monitor_etfs():
         if should_send_alert(alert_hash):
             send_email_alert(subject="⚠️ ETF Risk Alert", body=full_message)
         else:
-            print("🔕 Duplicate alert detected. Suppressed.")
+            log("🔕 Duplicate alert detected. Suppressed.")
     else:
-        print("✅ No alerts this cycle.")
+        log("✅ No alerts this cycle.")
 
     send_heartbeat()
 
 def monitor_aum():
-    print("\n📊 Checking AUM values...")
+    log("📊 Checking AUM values...")
     previous = load_json(AUM_TRACKER_FILE)
     current = {}
     alerts = []
@@ -204,7 +224,7 @@ def monitor_aum():
                     alerts.append(f"📈 {ticker}: AUM milestone exceeded ${max_aum/1_000_000:.1f}M! Current ${aum/1_000_000:.1f}M.")
 
         except Exception as e:
-            print(f"❌ Error checking AUM for {ticker}: {e}")
+            log(f"❌ Error checking AUM for {ticker}: {e}")
 
     save_json(AUM_TRACKER_FILE, current)
 
@@ -214,13 +234,16 @@ def monitor_aum():
         if should_send_alert(alert_hash):
             send_email_alert(subject="⚠️ ETF AUM Risk Alert", body=body)
         else:
-            print("🔕 Duplicate AUM alert detected. Suppressed.")
+            log("🔕 Duplicate AUM alert detected. Suppressed.")
 
 # --- MAIN LOOP ---
 
-print("✅ ETF Risk Monitor started. Running first scan now...")
+log("✅ ETF Risk Monitor started. Running first scan now...")
 monitor_etfs()
-schedule.every(1).hours.do(monitor_etfs)
+if FAST_DEBUG:
+    schedule.every(1).minutes.do(monitor_etfs)
+else:
+    schedule.every(1).hours.do(monitor_etfs)
 
 while True:
     schedule.run_pending()

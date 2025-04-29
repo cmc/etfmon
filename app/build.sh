@@ -22,4 +22,5 @@ sudo docker run -d \
   --log-opt max-file=5 \
   -v "${APP_DIR}:/app" \
   etf-monitor
+sudo docker logs -f etf-monitor
 

@@ -1,0 +1,81 @@
+# config.yaml
+
+tickers:
+  - MRNY
+  - TSLY
+  - YETH
+  - QQQY
+  - FIAT
+  - YMAG
+  - YMAX
+  - LFGY
+  - GPTY
+  - WDTE
+  - JEPI
+  - JEPQ
+
+polygon_api_key: "oO1M"
+
+yahoo_fallback: true  # Use Yahoo Finance scraping if NAV missing
+
+email_settings:
+  smtp_server: "smtp.gmail.com"
+  smtp_port: 587
+  sender_email: "l@a.com"
+  sender_password: "  "
+  receivers:
+    - "chris@cmcsec.com"
+    - "10101010101@txt.att.net"   # AT&T SMS Gateway
+
+risk_thresholds:
+  nav_decay_pct: 0.05         # 5% NAV drop triggers alert
+  premium_discount_pct: 0.02  # 2% deviation triggers alert
+  volume_drop_pct: 0.30       # 30% volume drop triggers alert
+
+
+heartbeat_url: "https://heartbeat.uptimerobot.com/your_stuff_here!"
+
+principal_loss_thresholds:
+  warning: 0.05    # 5% unrealized loss triggers warning
+  danger: 0.10     # 10% loss triggers serious alert
+  critical: 0.20   # 20% loss triggers critical alert
+
+weekly_report_day: "Monday"
+
+aum_thresholds:
+  MRNY:
+    min_aum: 30000000
+    max_aum: 50000000
+  TSLY:
+    min_aum: 35000000
+    max_aum: 55000000
+  YETH:
+    min_aum: 40000000
+    max_aum: 60000000
+  QQQY:
+    min_aum: 50000000
+    max_aum: 70000000
+  FIAT:
+    min_aum: 25000000
+    max_aum: 45000000
+  YMAG:
+    min_aum: 25000000
+    max_aum: 45000000
+  YMAX:
+    min_aum: 40000000
+    max_aum: 60000000
+  LFGY:
+    min_aum: 30000000
+    max_aum: 50000000
+  GPTY:
+    min_aum: 20000000
+    max_aum: 40000000
+  WDTE:
+    min_aum: 20000000
+    max_aum: 40000000
+  JEPI:
+    min_aum: 500000000
+    max_aum: null
+  JEPQ:
+    min_aum: 500000000
+    max_aum: null

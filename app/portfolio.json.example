@@ -1,0 +1,19 @@
+{
+  "MRNY": {
+    "shares": 1000,
+    "buy_nav": 2.60
+  },
+  "TSLY": {
+    "shares": 1500,
+    "buy_nav": 8.10
+  },
+  "YETH": {
+    "shares": 500,
+    "buy_nav": 24.00
+  },
+  "QQQY": {
+    "shares": 1200,
+    "buy_nav": 24.50
+  }
+}
+

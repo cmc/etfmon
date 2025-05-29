@@ -1,20 +1,22 @@
 #!/bin/bash
 
-APP_DIR=$(pwd)  # Capture the current directory, where your app lives
+set -e  # Exit immediately on errors
 
-# Stop and remove existing container if running
+APP_DIR=$(pwd)  # Current app directory
+
+# --- Stop and Remove Old Container if Exists ---
 if [ "$(docker ps -aq -f name=etf-monitor)" ]; then
-    echo "Stopping and removing existing etf-monitor container..."
-    docker stop etf-monitor
-    docker rm etf-monitor
+    echo "🛑 Stopping and removing existing etf-monitor container..."
+    sudo docker stop etf-monitor || true
+    sudo docker rm etf-monitor || true
 fi
 
-# Build new image
-echo "Building new etf-monitor image..."
-docker build -t etf-monitor .
+# --- Build New Docker Image ---
+echo "🔨 Building new etf-monitor image..."
+sudo docker build -t etf-monitor .
 
-# Run new container
-echo "Starting new etf-monitor container with bind mount..."
+# --- Run New Container ---
+echo "🚀 Starting new etf-monitor container with bind mount and log rotation..."
 sudo docker run -d \
   --restart unless-stopped \
   --name etf-monitor \
@@ -22,5 +24,9 @@ sudo docker run -d \
   --log-opt max-file=5 \
   -v "${APP_DIR}:/app" \
   etf-monitor
-sudo docker logs -f etf-monitor
+
+# --- Tail Logs ---
+echo "📋 Following container logs..."
+#sudo docker logs -f etf-monitor
+tail -100f output.log
 

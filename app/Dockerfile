@@ -1,18 +1,17 @@
-# Use lightweight Python image
+# Dockerfile
+
+# --- Base Image ---
 FROM python:3.11-slim
 
-# Set working directory
+# --- Environment Setup ---
 WORKDIR /app
 
-# Copy files
-COPY app.py app.py
-COPY config.yaml config.yaml
-COPY requirements.txt requirements.txt
-COPY alert_emailer.py alert_emailer.py
+# --- Copy App Files ---
+COPY . .
 
-# Install Python dependencies
+# --- Install Requirements ---
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Command to run the app
-CMD ["python", "app.py"]
+# --- Default Command ---
+CMD ["python", "main.py"]
 

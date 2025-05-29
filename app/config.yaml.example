@@ -79,3 +79,6 @@ aum_thresholds:
   JEPQ:
     min_aum: 500000000
     max_aum: null
+
+capital_gains_tax_rate: 0.50  # ex: 50% CA + Fed combined
+trim_cooldown_days: 30

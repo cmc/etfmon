@@ -956,9 +956,10 @@ total_positions = len([p for p in portfolio.items() if p[0] in market_tracker])
 
 health_color = COLORS['healthy'] if total_gain_pct > 15 else COLORS['at_risk'] if total_gain_pct > 5 else COLORS['high_risk']
 
-left_col, right_col = st.columns([2, 1])  # 2:1 ratio
+# First row: Portfolio Health, Dividend Income, Upcoming Payments
+health_col, div_col, payments_col = st.columns([2, 1, 1])
 
-with left_col:
+with health_col:
     # Portfolio Health Overview
     st.markdown(f"""
     <div style='background-color: {health_color['bg']}; 
@@ -995,18 +996,19 @@ with left_col:
     </div>
     """, unsafe_allow_html=True)
 
-    # Get dividend data
-    metrics, calendar_data = create_dividend_forecast_section(portfolio)
+# Get dividend data
+metrics, calendar_data = create_dividend_forecast_section(portfolio)
 
-    # Create two columns for dividend widgets
-    div_income_col, div_payments_col = st.columns(2)
+with div_col:
+    create_dividend_income_widget(metrics)
 
-    with div_income_col:
-        create_dividend_income_widget(metrics)
+with payments_col:
+    create_upcoming_payments_widget(calendar_data)
 
-    with div_payments_col:
-        create_upcoming_payments_widget(calendar_data)
+# Second row: Positions and Market News
+positions_col, news_col = st.columns([2, 1])
 
+with positions_col:
     # Display positions by category
     if healthy_positions:
         create_position_table(
@@ -1032,7 +1034,7 @@ with left_col:
             "🚨 REVIEW"
         )
 
-with right_col:
+with news_col:
     # Market Sentiment & News section
     st.markdown("""
     <div style='background-color: #4C566A; padding: 20px; border-radius: 10px; margin-bottom: 20px;'>

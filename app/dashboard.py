@@ -32,6 +32,26 @@ DIVIDEND_UPDATE_INTERVAL = 7 * 24 * 3600  # 7 days in seconds
 MAX_DIVIDEND_RETRIES = 3  # Maximum number of retries for dividend fetching
 MAX_RETRIES = 3
 
+# Color constants for position status
+COLORS = {
+    'healthy': {
+        'bg': '#28a745',
+        'text': '#ffffff',
+        'shadow': '0 1px 3px rgba(0,0,0,0.3)'
+    },
+    'at_risk': {
+        'bg': '#fd7e14',  # Bootstrap orange
+        'text': '#ffffff',
+        'shadow': '0 1px 3px rgba(0,0,0,0.3)',
+        'border': '#dc6502'  # Darker orange border
+    },
+    'high_risk': {
+        'bg': '#dc3545',
+        'text': '#ffffff',
+        'shadow': '0 1px 3px rgba(0,0,0,0.3)'
+    }
+}
+
 # Ensure cache directories exist
 os.makedirs(ARTICLE_CACHE_DIR, exist_ok=True)
 os.makedirs(DIVIDEND_HISTORY_DIR, exist_ok=True)
@@ -612,9 +632,8 @@ def analyze_dividend_history(ticker):
         st.warning(f"Could not analyze dividends for {ticker}: {str(e)}")
         return None
 
-def create_consolidated_dividend_widget(metrics, calendar_data):
-    """Create a consolidated dividend widget with income metrics and payment schedule."""
-    # Header
+def create_dividend_income_widget(metrics):
+    """Create the dividend income metrics widget."""
     st.markdown("### 💰 Dividend Income")
 
     # Income metrics
@@ -643,7 +662,8 @@ def create_consolidated_dividend_widget(metrics, calendar_data):
     </div>
     """, unsafe_allow_html=True)
 
-    # Payment schedule
+def create_upcoming_payments_widget(calendar_data):
+    """Create the upcoming payments calendar widget."""
     st.markdown("### 📅 Upcoming Payments")
     
     current_month = calendar_data[0] if calendar_data else None
@@ -693,7 +713,6 @@ def create_dividend_forecast_section(portfolio):
                 next_date = div_history['next_date']
                 if (next_date.year == current_month.year and 
                     next_date.month == current_month.month):
-                    # Use predicted_amount instead of amount
                     amount = position['shares'] * div_history['predicted_amount']
                     month_total += amount
                     month_divs.append({
@@ -710,8 +729,7 @@ def create_dividend_forecast_section(portfolio):
         
         current_month = (current_month + timedelta(days=days_in_month)).replace(day=1)
 
-    # Create the consolidated dividend widget
-    create_consolidated_dividend_widget(metrics, calendar_data)
+    return metrics, calendar_data
 
 def calculate_portfolio_dividend_metrics(portfolio):
     """Calculate portfolio-wide dividend metrics with trends"""
@@ -773,47 +791,6 @@ def format_trend_indicator(value, include_value=True):
     if include_value:
         return f'<span style="color: {color}">{arrow} {abs(value):.1f}%</span>'
     return f'<span style="color: {color}">{arrow}</span>'
-
-# --- Load All Data ---
-nav_tracker = load_json("nav_tracker.json")
-market_tracker = load_json("market_price_tracker.json")
-aum_tracker = load_json("aum_tracker.json")
-portfolio = load_json("portfolio.json")
-
-# --- Header ---
-st.title("🎯 YieldMax ETF Risk Dashboard")
-
-# Convert current time to Pacific timezone
-pacific_tz = pytz.timezone('America/Los_Angeles')
-current_time = datetime.datetime.now(pacific_tz)
-st.write(f"Last Updated: {current_time.strftime('%Y-%m-%d %I:%M:%S %p %Z')}")
-
-# Refresh button
-if st.button("🔄 Refresh Data"):
-    st.rerun()
-
-# Create two columns for the layout
-left_col, right_col = st.columns([2, 1])  # 2:1 ratio
-
-# Update the color constants at the top of the file
-COLORS = {
-    'healthy': {
-        'bg': '#28a745',
-        'text': '#ffffff',
-        'shadow': '0 1px 3px rgba(0,0,0,0.3)'
-    },
-    'at_risk': {
-        'bg': '#fd7e14',  # Changed to Bootstrap orange
-        'text': '#ffffff',  # Changed to white text
-        'shadow': '0 1px 3px rgba(0,0,0,0.3)',
-        'border': '#dc6502'  # Darker orange border
-    },
-    'high_risk': {
-        'bg': '#dc3545',
-        'text': '#ffffff',
-        'shadow': '0 1px 3px rgba(0,0,0,0.3)'
-    }
-}
 
 def create_position_table(positions, status, color_key, action_text):
     """Create a formatted table for a group of positions"""
@@ -917,92 +894,119 @@ def create_position_table(positions, status, color_key, action_text):
             hide_index=True
         )
 
+# --- Load All Data ---
+nav_tracker = load_json("nav_tracker.json")
+market_tracker = load_json("market_price_tracker.json")
+aum_tracker = load_json("aum_tracker.json")
+portfolio = load_json("portfolio.json")
+
+# --- Header ---
+st.title("🎯 YieldMax ETF Risk Dashboard")
+
+# Convert current time to Pacific timezone
+pacific_tz = pytz.timezone('America/Los_Angeles')
+current_time = datetime.datetime.now(pacific_tz)
+st.write(f"Last Updated: {current_time.strftime('%Y-%m-%d %I:%M:%S %p %Z')}")
+
+# Refresh button
+if st.button("🔄 Refresh Data"):
+    st.rerun()
+
+# --- Main Layout ---
+
+# Calculate portfolio positions and metrics
+total_current_value = 0
+total_initial_value = 0
+healthy_positions = []  # >15% gain
+monitor_positions = []  # 5-15% gain
+high_risk_positions = []  # <5% gain
+
+for ticker, position in portfolio.items():
+    if ticker in market_tracker and market_tracker[ticker]:
+        current_price = market_tracker[ticker][-1]['price']
+        shares = position['shares']
+        buy_nav = position['buy_nav']
+        
+        current_value = current_price * shares
+        initial_value = buy_nav * shares
+        gain_pct = ((current_price - buy_nav) / buy_nav * 100)
+        
+        total_current_value += current_value
+        total_initial_value += initial_value
+
+        position_data = {
+            'ticker': ticker,
+            'gain_pct': gain_pct,
+            'current_price': current_price,
+            'buy_nav': buy_nav,
+            'shares': shares,
+            'current_value': current_value,
+            'initial_value': initial_value
+        }
+        
+        if gain_pct > 15:
+            healthy_positions.append(position_data)
+        elif gain_pct > 5:
+            monitor_positions.append(position_data)
+        else:
+            high_risk_positions.append(position_data)
+
+total_gain_pct = ((total_current_value - total_initial_value) / total_initial_value * 100)
+total_positions = len([p for p in portfolio.items() if p[0] in market_tracker])
+
+health_color = COLORS['healthy'] if total_gain_pct > 15 else COLORS['at_risk'] if total_gain_pct > 5 else COLORS['high_risk']
+
+left_col, right_col = st.columns([2, 1])  # 2:1 ratio
+
 with left_col:
-    # Create two columns for health overview and dividend metrics
-    health_col, div_col = st.columns([5, 4])
-    
-    with health_col:
-        # Portfolio Health Overview (existing code)
-        total_current_value = 0
-        total_initial_value = 0
-        healthy_positions = []  # >15% gain
-        monitor_positions = []  # 5-15% gain
-        high_risk_positions = []  # <5% gain
+    # Portfolio Health Overview
+    st.markdown(f"""
+    <div style='background-color: {health_color['bg']}; 
+                padding: 20px; 
+                border-radius: 10px; 
+                margin-bottom: 20px;
+                border: 1px solid {health_color.get("border", health_color["bg"])};'>
+        <h2 style='color: {health_color['text']}; 
+                   margin: 0; 
+                   text-shadow: {health_color['shadow']};
+                   font-weight: 600;'>Portfolio Health Overview</h2>
+        <p style='color: {health_color['text']}; 
+                  font-size: 18px; 
+                  margin: 10px 0; 
+                  text-shadow: {health_color['shadow']};
+                  font-weight: 500;'>
+            Total Portfolio Gain: {total_gain_pct:.2f}% (${(total_current_value - total_initial_value):+,.2f})
+        </p>
+        <p style='color: {health_color['text']}; 
+                  font-size: 16px; 
+                  margin: 5px 0; 
+                  text-shadow: {health_color['shadow']};'>
+            Current Value: ${total_current_value:,.2f} | Initial Value: ${total_initial_value:,.2f}
+        </p>
+        <p style='color: {health_color['text']}; 
+                  font-size: 16px; 
+                  margin: 5px 0; 
+                  text-shadow: {health_color['shadow']};'>
+            Position Distribution:
+            🟢 Healthy ({len(healthy_positions)} positions) |
+            🟡 Monitor ({len(monitor_positions)} positions) |
+            🔴 High Risk ({len(high_risk_positions)} positions)
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
 
-        for ticker, position in portfolio.items():
-            if ticker in market_tracker and market_tracker[ticker]:
-                current_price = market_tracker[ticker][-1]['price']
-                shares = position['shares']
-                buy_nav = position['buy_nav']
-                
-                current_value = current_price * shares
-                initial_value = buy_nav * shares
-                gain_pct = ((current_price - buy_nav) / buy_nav * 100)
-                
-                total_current_value += current_value
-                total_initial_value += initial_value
+    # Get dividend data
+    metrics, calendar_data = create_dividend_forecast_section(portfolio)
 
-                position_data = {
-                    'ticker': ticker,
-                    'gain_pct': gain_pct,
-                    'current_price': current_price,
-                    'buy_nav': buy_nav,
-                    'shares': shares,
-                    'current_value': current_value,
-                    'initial_value': initial_value
-                }
-                
-                if gain_pct > 15:
-                    healthy_positions.append(position_data)
-                elif gain_pct > 5:
-                    monitor_positions.append(position_data)
-                else:
-                    high_risk_positions.append(position_data)
+    # Create two columns for dividend widgets
+    div_income_col, div_payments_col = st.columns(2)
 
-        total_gain_pct = ((total_current_value - total_initial_value) / total_initial_value * 100)
-        total_positions = len([p for p in portfolio.items() if p[0] in market_tracker])
+    with div_income_col:
+        create_dividend_income_widget(metrics)
 
-        health_color = COLORS['healthy'] if total_gain_pct > 15 else COLORS['at_risk'] if total_gain_pct > 5 else COLORS['high_risk']
-        
-        st.markdown(f"""
-        <div style='background-color: {health_color['bg']}; 
-                    padding: 20px; 
-                    border-radius: 10px; 
-                    margin-bottom: 20px;
-                    border: 1px solid {health_color.get("border", health_color["bg"])};'>
-            <h2 style='color: {health_color['text']}; 
-                       margin: 0; 
-                       text-shadow: {health_color['shadow']};
-                       font-weight: 600;'>Portfolio Health Overview</h2>
-            <p style='color: {health_color['text']}; 
-                      font-size: 18px; 
-                      margin: 10px 0; 
-                      text-shadow: {health_color['shadow']};
-                      font-weight: 500;'>
-                Total Portfolio Gain: {total_gain_pct:.2f}% (${(total_current_value - total_initial_value):+,.2f})
-            </p>
-            <p style='color: {health_color['text']}; 
-                      font-size: 16px; 
-                      margin: 5px 0; 
-                      text-shadow: {health_color['shadow']};'>
-                Current Value: ${total_current_value:,.2f} | Initial Value: ${total_initial_value:,.2f}
-            </p>
-            <p style='color: {health_color['text']}; 
-                      font-size: 16px; 
-                      margin: 5px 0; 
-                      text-shadow: {health_color['shadow']};'>
-                Position Distribution:
-                🟢 Healthy ({len(healthy_positions)} positions) |
-                🟡 Monitor ({len(monitor_positions)} positions) |
-                🔴 High Risk ({len(high_risk_positions)} positions)
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    with div_col:
-        # Add dividend forecast section with consolidated widget
-        create_dividend_forecast_section(portfolio)
-        
+    with div_payments_col:
+        create_upcoming_payments_widget(calendar_data)
+
     # Display positions by category
     if healthy_positions:
         create_position_table(
@@ -1029,17 +1033,17 @@ with left_col:
         )
 
 with right_col:
+    # Market Sentiment & News section
     st.markdown("""
     <div style='background-color: #4C566A; padding: 20px; border-radius: 10px; margin-bottom: 20px;'>
         <h2 style='color: white; margin: 0;'>Market Sentiment & News</h2>
     </div>
     """, unsafe_allow_html=True)
-    
-    # Fetch news and calculate sentiment
+
+    # Display news with sentiment analysis
     tickers_list = list(portfolio.keys())
     news_items = fetch_seeking_alpha_news(tickers_list)
     
-    # Display news with sentiment analysis
     for item in news_items:
         sentiment_color = get_sentiment_color(item['sentiment'])
         sentiment_label = "Positive" if item['sentiment'] > 0.2 else "Negative" if item['sentiment'] < -0.2 else "Neutral"
@@ -1061,22 +1065,6 @@ with right_col:
                       font-weight: 600; 
                       display: block; 
                       margin: 5px 0;'>{item['title']}</a>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    # Add sentiment summary
-    if news_items:
-        avg_sentiment = np.mean([item['sentiment'] for item in news_items])
-        st.markdown(f"""
-        <div style='background-color: {get_sentiment_color(avg_sentiment)}; 
-                    padding: 15px; 
-                    border-radius: 10px; 
-                    margin-top: 20px;'>
-            <h3 style='color: white; margin: 0;'>Overall Market Sentiment</h3>
-            <p style='color: white; margin: 5px 0;'>
-                {'Positive' if avg_sentiment > 0.2 else 'Negative' if avg_sentiment < -0.2 else 'Neutral'}
-                ({avg_sentiment:.2f})
-            </p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -1175,4 +1163,115 @@ st.markdown("""
 
 # --- Footer ---
 st.markdown("---")
-st.markdown("*Data refreshes hourly. All calculations based on latest available data.*") 
+st.markdown("*Data refreshes hourly. All calculations based on latest available data.*")
+
+# --- Main Layout ---
+main_container = st.container()
+
+with main_container:
+    # Portfolio Health Overview at the top
+    st.markdown("""
+    <div style='background-color: {health_color['bg']}; 
+                padding: 20px; 
+                border-radius: 10px; 
+                margin-bottom: 20px;
+                border: 1px solid {health_color.get("border", health_color["bg"])};'>
+        <h2 style='color: {health_color['text']}; 
+                   margin: 0; 
+                   text-shadow: {health_color['shadow']};
+                   font-weight: 600;'>Portfolio Health Overview</h2>
+        <p style='color: {health_color['text']}; 
+                  font-size: 18px; 
+                  margin: 10px 0; 
+                  text-shadow: {health_color['shadow']};
+                  font-weight: 500;'>
+            Total Portfolio Gain: {total_gain_pct:.2f}% (${(total_current_value - total_initial_value):+,.2f})
+        </p>
+        <p style='color: {health_color['text']}; 
+                  font-size: 16px; 
+                  margin: 5px 0; 
+                  text-shadow: {health_color['shadow']};'>
+            Current Value: ${total_current_value:,.2f} | Initial Value: ${total_initial_value:,.2f}
+        </p>
+        <p style='color: {health_color['text']}; 
+                  font-size: 16px; 
+                  margin: 5px 0; 
+                  text-shadow: {health_color['shadow']};'>
+            Position Distribution:
+            🟢 Healthy ({len(healthy_positions)} positions) |
+            🟡 Monitor ({len(monitor_positions)} positions) |
+            🔴 High Risk ({len(high_risk_positions)} positions)
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Get dividend data
+    metrics, calendar_data = create_dividend_forecast_section(portfolio)
+
+    # Create two columns for dividend widgets
+    div_income_col, div_payments_col = st.columns(2)
+
+    with div_income_col:
+        create_dividend_income_widget(metrics)
+
+    with div_payments_col:
+        create_upcoming_payments_widget(calendar_data)
+
+    # Display positions by category
+    positions_container = st.container()
+    with positions_container:
+        if healthy_positions:
+            create_position_table(
+                healthy_positions,
+                "🟢 Healthy Positions (>15% gain)",
+                'healthy',
+                "✅ MAINTAIN"
+            )
+
+        if monitor_positions:
+            create_position_table(
+                monitor_positions,
+                "🟡 Monitor Positions (5-15% gain)",
+                'at_risk',
+                "👀 WATCH"
+            )
+
+        if high_risk_positions:
+            create_position_table(
+                high_risk_positions,
+                "🔴 High Risk Positions (<5% gain)",
+                'high_risk',
+                "🚨 REVIEW"
+            )
+
+    # Market Sentiment & News section
+    st.markdown("""
+    <div style='background-color: #4C566A; padding: 20px; border-radius: 10px; margin-bottom: 20px;'>
+        <h2 style='color: white; margin: 0;'>Market Sentiment & News</h2>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Display news with sentiment analysis
+    for item in news_items:
+        sentiment_color = get_sentiment_color(item['sentiment'])
+        sentiment_label = "Positive" if item['sentiment'] > 0.2 else "Negative" if item['sentiment'] < -0.2 else "Neutral"
+        
+        st.markdown(f"""
+        <div style='border-left: 4px solid {sentiment_color}; 
+                    padding: 10px; 
+                    margin-bottom: 10px; 
+                    background-color: rgba(76, 86, 106, 0.2); 
+                    border-radius: 0 10px 10px 0;'>
+            <div style='display: flex; justify-content: space-between; align-items: center;'>
+                <span style='color: #88C0D0; font-size: 12px;'>{item['ticker']} | {sentiment_label}</span>
+                <span style='color: #4C566A; font-size: 12px;'>{item['date']}</span>
+            </div>
+            <a href='{item['link']}' 
+               target='_blank' 
+               style='color: #D8DEE9; 
+                      text-decoration: none; 
+                      font-weight: 600; 
+                      display: block; 
+                      margin: 5px 0;'>{item['title']}</a>
+        </div>
+        """, unsafe_allow_html=True) 

@@ -1,0 +1,55 @@
+{
+  "TSLY": {
+    "shares": 23915,
+    "buy_nav": 7.8393
+  },
+  "LFGY": {
+    "shares": 2777,
+    "buy_nav": 34.1038
+  },
+  "YETH": {
+    "shares": 4982,
+    "buy_nav": 23.7486
+  },
+  "QQQY": {
+    "shares": 4720,
+    "buy_nav": 23.2366
+  },
+  "FIAT": {
+    "shares": 12325,
+    "buy_nav": 8.5264
+  },
+  "MRNY": {
+    "shares": 50564,
+    "buy_nav": 2.5400
+  },
+  "JEPI": {
+    "shares": 567,
+    "buy_nav": 52.8100
+  },
+  "JEPQ": {
+    "shares": 628,
+    "buy_nav": 47.7499
+  },
+  "WDTE": {
+    "shares": 1916,
+    "buy_nav": 31.2427
+  },
+  "GPTY": {
+    "shares": 1671,
+    "buy_nav": 35.9424
+  },
+  "YMAX": {
+    "shares": 6102,
+    "buy_nav": 12.2899
+  },
+  "YMAG": {
+    "shares": 5580,
+    "buy_nav": 13.4499
+  },
+  "APLY": {
+    "shares": 6646,
+    "buy_nav": 13.5386
+  }
+}
+
